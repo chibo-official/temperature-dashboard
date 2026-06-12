@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>冷蔵庫温度管理 ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --brand:#8B0000;--brand-light:#fdf0f0;
+  --ok:#15803d;--ok-bg:#dcfce7;
+  --warn:#b45309;--warn-bg:#fef9c3;
+  --alert:#b91c1c;--alert-bg:#fee2e2;
+  --text:#18181b;--sub:#71717a;--hint:#a1a1aa;
+  --bg:#f7f5f2;--surface:#fff;--border:#e4e4e7;
+  --r:10px;--r-sm:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Meiryo UI','Hiragino Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+
+/* TOPBAR */
+.topbar{background:var(--brand);color:#fff;height:52px;display:flex;align-items:center;padding:0 16px;gap:10px;position:sticky;top:0;z-index:100}
+.topbar-title{font-size:15px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar-time{font-size:11px;opacity:.8;white-space:nowrap;display:none}
+.topbar-btn{background:rgba(255,255,255,.18);border:none;color:#fff;padding:6px 10px;border-radius:20px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap}
+
+/* BOTTOM NAV（スマホ） */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:100;height:56px}
+.bnav-inner{display:flex;height:100%}
+.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;font-family:inherit;font-size:10px;color:var(--hint);cursor:pointer;padding:0}
+.bnav-btn.active{color:var(--brand)}
+.bnav-icon{font-size:20px;line-height:1}
+
+/* SCREENS */
+.screen{display:none;padding:14px 14px 72px}
+.screen.active{display:block}
+
+/* PC LAYOUT */
+@media (min-width:768px){
+  .topbar-time{display:block}
+  .bottom-nav{display:none!important}
+  .pc-layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 52px)}
+  .pc-sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;height:calc(100vh - 52px);position:sticky;top:52px}
+  .pc-main{padding:16px;overflow-y:auto}
+  .screen{display:none!important}
+  .pc-screen-home{display:block}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+}
+@media (max-width:767px){
+  .bottom-nav{display:block}
+  .pc-layout{display:block}
+  .pc-sidebar{display:none}
+  .pc-main{display:none}
+  .topbar-btn#btn-auto{display:none}
+}
+
+/* KPI */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+@media(max-width:767px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px}
+.kpi-label{font-size:11px;color:var(--sub);margin-bottom:3px}
+.kpi-val{font-size:24px;font-weight:700;line-height:1}
+.kpi-val.ok{color:var(--ok)}.kpi-val.warn{color:var(--warn)}.kpi-val.alert{color:var(--alert)}
+.kpi-sub{font-size:11px;color:var(--hint);margin-top:3px}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.card-title{font-size:13px;font-weight:700;color:var(--brand);margin-bottom:10px}
+.section-title{font-size:13px;font-weight:700;color:var(--sub);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+
+/* STORE LIST */
+.sb-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sb-title{font-size:12px;font-weight:700;color:var(--sub)}
+.filter-row{display:flex;gap:4px}
+.filter-pill{background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--sub)}
+.filter-pill.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.store-row{display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);gap:8px;cursor:pointer;transition:background .12s;-webkit-tap-highlight-color:transparent}
+.store-row:active{background:#fafafa}
+.store-row.selected{background:var(--brand-light);border-left:3px solid var(--brand)}
+.store-code{font-size:11px;color:var(--hint);width:28px;flex-shrink:0}
+.store-name{flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;flex-shrink:0}
+.badge-ok{background:var(--ok-bg);color:var(--ok)}
+.badge-warn{background:var(--warn-bg);color:var(--warn)}
+.badge-alert{background:var(--alert-bg);color:var(--alert)}
+.badge-none{background:var(--bg);color:var(--hint);border:1px solid var(--border)}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+.dot-ok{background:var(--ok)}.dot-warn{background:var(--warn)}
+.dot-alert{background:var(--alert);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.slots{display:flex;gap:3px}
+.slot{width:22px;height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;border:1px solid var(--border);color:var(--hint);background:var(--bg)}
+.slot.ok{background:var(--ok-bg);color:var(--ok);border-color:#86efac}
+.slot.warn{background:var(--warn-bg);color:var(--warn);border-color:#fde68a}
+.slot.alert{background:var(--alert-bg);color:var(--alert);border-color:#fca5a5}
+
+/* TABS */
+.tab-row{display:flex;gap:4px;margin-bottom:12px}
+.tab-btn{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 14px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--sub);flex:1;text-align:center}
+.tab-btn.active{background:var(--brand);border-color:var(--brand);color:#fff}
+
+/* FRIDGE GRID */
+.fridge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-bottom:12px}
+.fridge-cell{border:1.5px solid var(--border);border-radius:var(--r-sm);padding:10px;cursor:pointer;transition:all .15s;background:var(--surface);-webkit-tap-highlight-color:transparent}
+.fridge-cell.selected{border-color:var(--brand);background:var(--brand-light)}
+.fridge-cell.ok{border-left:3px solid var(--ok)}
+.fridge-cell.warn{border-left:3px solid var(--warn)}
+.fridge-cell.alert{border-left:3px solid var(--alert)}
+.fc-name{font-size:12px;font-weight:500;margin-bottom:4px}
+.fc-temp{font-size:20px;font-weight:700;line-height:1;margin-bottom:3px}
+.fc-temp.ok{color:var(--ok)}.fc-temp.warn{color:var(--warn)}.fc-temp.alert{color:var(--alert)}.fc-temp.none{color:var(--hint)}
+.fc-time{font-size:10px;color:var(--hint)}
+
+/* CHART */
+.chart-header{display:flex;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
+.chart-title-text{font-size:13px;font-weight:700;flex:1;min-width:0}
+.period-btns{display:flex;gap:3px}
+.period-btn{background:none;border:1px solid var(--border);border-radius:var(--r-sm);padding:4px 12px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--sub)}
+.period-btn.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.chart-wrap{position:relative;height:200px}
+.threshold-legend{display:flex;gap:10px;margin-top:6px;font-size:11px;color:var(--hint);flex-wrap:wrap}
+.tl-item{display:flex;align-items:center;gap:4px}
+.tl-dash{width:14px;height:0;border-top:2px dashed}
+
+/* LOG FILTER */
+.log-filter-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;padding:12px;background:var(--bg);border-radius:var(--r-sm);border:1px solid var(--border)}
+@media(min-width:768px){.log-filter-row{display:flex;flex-wrap:wrap;align-items:flex-end}}
+.log-filter-group{display:flex;flex-direction:column;gap:3px}
+.log-filter-group label{font-size:11px;font-weight:700;color:var(--sub)}
+.date-input,.select-input{padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);width:100%}
+.btn-row{grid-column:1/-1;display:flex;gap:8px}
+.search-btn{flex:1;padding:9px;background:var(--brand);color:#fff;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.dl-btn{flex:1;padding:9px;background:var(--ok);color:#fff;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+
+/* LOG TABLE */
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{background:var(--brand);color:#fff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;white-space:nowrap}
+.log-table td{padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.log-table tr:last-child td{border-bottom:none}
+.log-table tr:nth-child(even) td{background:#fafafa}
+.log-table tr.row-alert td{background:#fff5f5}
+.log-table tr.row-warn td{background:#fffbeb}
+.status-chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.chip-ok{background:var(--ok-bg);color:var(--ok)}
+.chip-warn{background:var(--warn-bg);color:var(--warn)}
+.chip-alert{background:var(--alert-bg);color:var(--alert)}
+.log-count{font-size:12px;color:var(--sub);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+
+/* ALERT LOG + PBAR */
+.log-item{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.log-item:last-child{border-bottom:none}
+.log-info{flex:1;min-width:0}
+.log-store{color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.two-col{display:block}
+@media(min-width:768px){.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+.pbar-wrap{margin-bottom:10px}
+.pbar-row{display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px}
+.pbar{background:var(--bg);border-radius:4px;height:9px;overflow:hidden;border:1px solid var(--border)}
+.pbar-fill{height:100%;border-radius:4px;background:var(--ok)}
+
+/* PLACEHOLDER */
+.placeholder{text-align:center;padding:32px 20px;color:var(--hint)}
+
+/* BACK BTN */
+.back-btn{display:flex;align-items:center;gap:6px;color:var(--brand);font-size:14px;font-weight:700;margin-bottom:12px;cursor:pointer;background:none;border:none;font-family:inherit;padding:0;-webkit-tap-highlight-color:transparent}
+
+/* LOADING */
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">🌡 冷蔵庫温度管理</div>
+  <div class="topbar-time" id="clock"></div>
+  <button class="topbar-btn" onclick="refreshData()" id="btn-refresh">🔄 更新</button>
+  <button class="topbar-btn" id="btn-auto" onclick="toggleAuto()" style="opacity:.7">⏱ 自動更新 OFF</button>
+</div>
+
+<!-- ===== PC レイアウト ===== -->
+<div class="pc-layout">
+  <div class="pc-sidebar">
+    <div class="sb-header">
+      <span class="sb-title">店舗一覧</span>
+      <div class="filter-row">
+        <div class="filter-pill active" onclick="filterStores('all',this)">全て</div>
+        <div class="filter-pill" onclick="filterStores('alert',this)">要確認</div>
+      </div>
+    </div>
+    <div id="store-list-pc"></div>
+  </div>
+  <div class="pc-main pc-screen-home">
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-label">管理機器数</div><div class="kpi-val" id="kpi-total-pc">—</div><div class="kpi-sub">全店舗合計</div></div>
+      <div class="kpi"><div class="kpi-label">✅ 正常</div><div class="kpi-val ok" id="kpi-ok-pc">—</div><div class="kpi-sub">本日記録済み</div></div>
+      <div class="kpi"><div class="kpi-label">⚠️ 警告</div><div class="kpi-val warn" id="kpi-warn-pc">—</div><div class="kpi-sub">要確認</div></div>
+      <div class="kpi"><div class="kpi-label">🚨 異常</div><div class="kpi-val alert" id="kpi-alert-pc">—</div><div class="kpi-sub">至急対応</div></div>
+    </div>
+    <div id="pc-placeholder" class="card">
+      <div class="placeholder">
+        <div style="font-size:36px;margin-bottom:8px">👈</div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:6px">左の店舗一覧から店舗を選んでください</div>
+        <div style="font-size:12px">冷蔵庫詳細・温度推移グラフ・記録一覧が表示されます</div>
+      </div>
+    </div>
+    <div id="pc-store-detail" style="display:none">
+      <div class="tab-row">
+        <button class="tab-btn active" id="pc-tab-chart" onclick="pcSwitchTab('chart')">📊 温度グラフ</button>
+        <button class="tab-btn" id="pc-tab-log" onclick="pcSwitchTab('log')">📋 記録一覧・DL</button>
+      </div>
+      <div id="pc-panel-chart">
+        <div class="card">
+          <div class="card-title" id="pc-detail-title"></div>
+          <div class="fridge-grid" id="pc-fridge-grid"></div>
+          <div class="chart-header">
+            <div class="chart-title-text" id="pc-chart-title">機器を選択してください</div>
+            <div class="period-btns">
+              <button class="period-btn active" onclick="setPeriod(7,this,'pc')">7日</button>
+              <button class="period-btn" onclick="setPeriod(14,this,'pc')">14日</button>
+              <button class="period-btn" onclick="setPeriod(30,this,'pc')">30日</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="pc-temp-chart"></canvas></div>
+          <div class="threshold-legend" id="pc-threshold-legend"></div>
+        </div>
+      </div>
+      <div id="pc-panel-log" style="display:none">
+        <div class="card">
+          <div class="card-title" id="pc-log-store-title"></div>
+          <div class="log-filter-row">
+            <div class="log-filter-group"><label>開始日</label><input type="date" id="pc-log-from" class="date-input"></div>
+            <div class="log-filter-group"><label>終了日</label><input type="date" id="pc-log-to" class="date-input"></div>
+            <div class="log-filter-group"><label>機器</label><select id="pc-log-fridge-sel" class="select-input"><option value="">全機器</option></select></div>
+            <div class="log-filter-group"><label>ステータス</label><select id="pc-log-status-sel" class="select-input"><option value="">全て</option><option value="normal">正常のみ</option><option value="warning">警告以上</option><option value="alert">異常のみ</option></select></div>
+            <div class="btn-row"><button class="search-btn" onclick="searchLogs('pc')">🔍 絞り込み</button><button class="dl-btn" onclick="downloadCSV('pc')">⬇️ CSV</button></div>
+          </div>
+          <div class="log-count" id="pc-log-count"></div>
+          <div style="overflow-x:auto"><table class="log-table"><thead><tr><th>記録日時</th><th>機器名</th><th>時間帯</th><th>温度（℃）</th><th>ステータス</th><th>担当者</th><th>備考</th></tr></thead><tbody id="pc-log-tbody"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="card"><div class="card-title">🚨 異常・警告 直近ログ</div><div id="alert-log-list-pc"></div></div>
+      <div class="card"><div class="card-title">📋 本日の記録提出率</div><div id="submission-rate-pc"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== スマホ：ボトムナビ ===== -->
+<div class="bottom-nav">
+  <div class="bnav-inner">
+    <button class="bnav-btn active" id="bnav-home" onclick="spNav('home')"><span class="bnav-icon">🏠</span>ホーム</button>
+    <button class="bnav-btn" id="bnav-stores" onclick="spNav('stores')"><span class="bnav-icon">🏪</span>店舗</button>
+    <button class="bnav-btn" id="bnav-alert" onclick="spNav('alert')"><span class="bnav-icon">🚨</span>アラート</button>
+    <button class="bnav-btn" id="bnav-rate" onclick="spNav('rate')"><span class="bnav-icon">📋</span>提出率</button>
+  </div>
+</div>
+
+<!-- スマホ：ホーム -->
+<div class="screen active" id="sp-home">
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">管理機器数</div><div class="kpi-val" id="kpi-total-sp">—</div><div class="kpi-sub">全店舗合計</div></div>
+    <div class="kpi"><div class="kpi-label">✅ 正常</div><div class="kpi-val ok" id="kpi-ok-sp">—</div></div>
+    <div class="kpi"><div class="kpi-label">⚠️ 警告</div><div class="kpi-val warn" id="kpi-warn-sp">—</div></div>
+    <div class="kpi"><div class="kpi-label">🚨 異常</div><div class="kpi-val alert" id="kpi-alert-sp">—</div></div>
+  </div>
+  <div class="card"><div class="card-title">🚨 異常・警告 直近ログ</div><div id="alert-log-list-sp"></div></div>
+  <div class="card"><div class="card-title">📋 本日の記録提出率</div><div id="submission-rate-sp"></div></div>
+</div>
+
+<!-- スマホ：店舗一覧 -->
+<div class="screen" id="sp-stores">
+  <div class="sb-header" style="margin-bottom:10px;padding:0">
+    <span class="sb-title">店舗一覧</span>
+    <div class="filter-row">
+      <div class="filter-pill active" onclick="filterStoresSP('all',this)">全て</div>
+      <div class="filter-pill" onclick="filterStoresSP('alert',this)">要確認</div>
+    </div>
+  </div>
+  <div id="store-list-sp" style="background:var(--surface);border-radius:var(--r);border:1px solid var(--border);overflow:hidden"></div>
+</div>
+
+<!-- スマホ：店舗詳細 -->
+<div class="screen" id="sp-detail">
+  <button class="back-btn" onclick="spNav('stores')">← 店舗一覧へ戻る</button>
+  <div class="tab-row">
+    <button class="tab-btn active" id="sp-tab-chart" onclick="spSwitchTab('chart')">📊 グラフ</button>
+    <button class="tab-btn" id="sp-tab-log" onclick="spSwitchTab('log')">📋 記録・DL</button>
+  </div>
+  <div id="sp-panel-chart">
+    <div class="card">
+      <div class="card-title" id="sp-detail-title"></div>
+      <div class="fridge-grid" id="sp-fridge-grid"></div>
+      <div class="chart-header">
+        <div class="chart-title-text" id="sp-chart-title">機器を選択してください</div>
+        <div class="period-btns">
+          <button class="period-btn active" onclick="setPeriod(7,this,'sp')">7日</button>
+          <button class="period-btn" onclick="setPeriod(14,this,'sp')">14日</button>
+          <button class="period-btn" onclick="setPeriod(30,this,'sp')">30日</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="sp-temp-chart"></canvas></div>
+      <div class="threshold-legend" id="sp-threshold-legend"></div>
+    </div>
+  </div>
+  <div id="sp-panel-log" style="display:none">
+    <div class="card">
+      <div class="card-title" id="sp-log-store-title"></div>
+      <div class="log-filter-row">
+        <div class="log-filter-group"><label>開始日</label><input type="date" id="sp-log-from" class="date-input"></div>
+        <div class="log-filter-group"><label>終了日</label><input type="date" id="sp-log-to" class="date-input"></div>
+        <div class="log-filter-group"><label>機器</label><select id="sp-log-fridge-sel" class="select-input"><option value="">全機器</option></select></div>
+        <div class="log-filter-group"><label>ステータス</label><select id="sp-log-status-sel" class="select-input"><option value="">全て</option><option value="normal">正常のみ</option><option value="warning">警告以上</option><option value="alert">異常のみ</option></select></div>
+        <div class="btn-row"><button class="search-btn" onclick="searchLogs('sp')">🔍 絞り込み</button><button class="dl-btn" onclick="downloadCSV('sp')">⬇️ CSV</button></div>
+      </div>
+      <div class="log-count" id="sp-log-count"></div>
+      <div style="overflow-x:auto"><table class="log-table"><thead><tr><th>記録日時</th><th>機器名</th><th>時間帯</th><th>温度</th><th>判定</th><th>担当者</th></tr></thead><tbody id="sp-log-tbody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- スマホ：アラート -->
+<div class="screen" id="sp-alert">
+  <div class="card"><div class="card-title">🚨 異常・警告 直近ログ</div><div id="alert-log-list-sp2"></div></div>
+</div>
+
+<!-- スマホ：提出率 -->
+<div class="screen" id="sp-rate">
+  <div class="card"><div class="card-title">📋 本日の記録提出率</div><div id="submission-rate-sp2"></div></div>
+</div>
+
+<div class="loading-overlay" id="loading-overlay" style="display:none">
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:var(--sub)">データを読み込み中...</div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyFzMNLQZ-yGWdkquLIYiuatHaexY-B9U5Dhv3n56M7Q0dZJ9wLsykhAojgqgByhMW27A/exec';
+
+let masterData=null, summaryData=null;
+let selectedStore=null, selectedFridgePC=null, selectedFridgeSP=null;
+let currentPeriodPC=7, currentPeriodSP=7, currentFilter='all', currentFilterSP='all';
+let chartPC=null, chartSP=null;
+let currentLogsPC=[], filteredLogsPC=[], currentLogsSP=[], filteredLogsSP=[];
+let autoTimer=null;
+
+// ============================================================
+// 初期化
+// ============================================================
+window.addEventListener('load', async ()=>{
+  const today=new Date(), from=new Date();
+  from.setDate(today.getDate()-29);
+  ['pc','sp'].forEach(p=>{
+    document.getElementById(p+'-log-to').value=fmtDate(today);
+    document.getElementById(p+'-log-from').value=fmtDate(from);
+  });
+  updateClock(); setInterval(updateClock,1000);
+  await loadAll();
+});
+
+async function loadAll(){
+  showLoading(true);
+  try{
+    const [master,summary]=await Promise.all([fetchGASJsonp('getMaster'),fetchGASJsonp('getSummary')]);
+    masterData=master; summaryData=summary;
+    buildStoreView();
+    renderKPI(); renderStoreLists(); renderAlertLog(); renderSubmissionRate();
+  }catch(e){ alert('データ読み込み失敗: '+e.message) }
+  finally{ showLoading(false) }
+}
+
+async function refreshData(){
+  await loadAll();
+  if(selectedStore){ await selectStore(selectedStore.code) }
+}
+
+// JSONP
+function fetchGASJsonp(action,params={}){
+  return new Promise((resolve,reject)=>{
+    const cb='cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const qs=new URLSearchParams({action,callback:cb,...params}).toString();
+    const s=document.createElement('script');
+    const t=setTimeout(()=>{delete window[cb];s.remove();reject(new Error('Timeout'))},15000);
+    window[cb]=(data)=>{clearTimeout(t);delete window[cb];s.remove();resolve(data)};
+    s.src=GAS_URL+'?'+qs;
+    s.onerror=()=>{clearTimeout(t);delete window[cb];reject(new Error('Load error'))};
+    document.head.appendChild(s);
+  });
+}
+
+// 自動更新
+const AUTO_INTERVAL=5*60*1000;
+function toggleAuto(){
+  const btn=document.getElementById('btn-auto');
+  if(autoTimer){clearInterval(autoTimer);autoTimer=null;btn.textContent='⏱ 自動更新 OFF';btn.style.opacity='.7'}
+  else{autoTimer=setInterval(()=>refreshData(),AUTO_INTERVAL);btn.textContent='⏱ 自動更新 ON';btn.style.opacity='1'}
+}
+
+// ============================================================
+// マスタからストアビュー構築
+// ============================================================
+function buildStoreView(){
+  if(!masterData) return;
+  const {stores,fridges}=masterData;
+  window.STORES=stores.map(s=>{
+    const sf=fridges.filter(f=>f.store_id===s.store_id).map(f=>({
+      id:f.fridge_id,name:f.name,type:f.type,
+      temp:null,status:'none',slot:null,
+      min_normal:f.min_normal,max_normal:f.max_normal,max_warn:f.max_warn
+    }));
+    const hasAlert=sf.some(f=>f.status==='alert');
+    const hasWarn=sf.some(f=>f.status==='warning'||f.status==='warn');
+    const allNone=sf.every(f=>f.status==='none');
+    return{
+      code:s.store_id,name:s.name,area:s.area,category:s.category,
+      status:hasAlert?'alert':hasWarn?'warn':allNone?'none':'ok',
+      alertCount:sf.filter(f=>f.status==='alert').length,
+      warnCount:sf.filter(f=>f.status==='warning'||f.status==='warn').length,
+      fridges:sf
+    };
+  });
+}
+
+// ============================================================
+// KPI
+// ============================================================
+function renderKPI(){
+  if(!window.STORES) return;
+  let total=0,ok=0,warn=0,alert=0;
+  STORES.forEach(s=>s.fridges.forEach(f=>{
+    total++;
+    if(f.status==='ok') ok++;
+    if(f.status==='warn'||f.status==='warning') warn++;
+    if(f.status==='alert') alert++;
+  }));
+  ['pc','sp'].forEach(p=>{
+    document.getElementById('kpi-total-'+p).textContent=total+'台';
+    document.getElementById('kpi-ok-'+p).textContent=ok;
+    document.getElementById('kpi-warn-'+p).textContent=warn;
+    document.getElementById('kpi-alert-'+p).textContent=alert;
+  });
+}
+
+// ============================================================
+// 店舗一覧
+// ============================================================
+function renderStoreLists(){
+  renderStoreList('pc',currentFilter);
+  renderStoreList('sp',currentFilterSP);
+}
+
+function renderStoreList(mode,filter){
+  const listId=mode==='pc'?'store-list-pc':'store-list-sp';
+  const list=document.getElementById(listId);
+  list.innerHTML='';
+  if(!window.STORES) return;
+  const stores=filter==='alert'?STORES.filter(s=>s.status==='alert'||s.status==='warn'):STORES;
+  stores.forEach(s=>{
+    const row=document.createElement('div');
+    row.className='store-row'+(selectedStore&&selectedStore.code===s.code?' selected':'');
+    row.onclick=()=>selectStore(s.code);
+    const badge=s.status==='alert'
+      ?`<span class="badge badge-alert"><span class="dot dot-alert"></span>異常 ${s.alertCount}</span>`
+      :s.status==='warn'
+      ?`<span class="badge badge-warn"><span class="dot dot-warn"></span>警告 ${s.warnCount}</span>`
+      :s.status==='none'
+      ?`<span class="badge badge-none">未記録</span>`
+      :`<span class="badge badge-ok"><span class="dot dot-ok"></span>正常</span>`;
+    const sc=s.status==='none'?'':s.status==='alert'?'alert':s.status==='warn'?'warn':'ok';
+    row.innerHTML=`
+      <span class="store-code">${s.code}</span>
+      <span class="store-name">${s.name}</span>
+      ${badge}
+      <div class="slots">
+        <div class="slot ${sc}">前</div>
+        <div class="slot">後</div>
+      </div>`;
+    list.appendChild(row);
+  });
+}
+
+function filterStores(type,el){
+  currentFilter=type;
+  document.querySelectorAll('#store-list-pc').forEach(()=>{});
+  document.querySelectorAll('.pc-sidebar .filter-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  renderStoreList('pc',type);
+}
+
+function filterStoresSP(type,el){
+  currentFilterSP=type;
+  document.querySelectorAll('#sp-stores .filter-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  renderStoreList('sp',type);
+}
+
+// ============================================================
+// 店舗選択
+// ============================================================
+async function selectStore(code){
+  selectedStore=STORES.find(s=>s.code===code);
+  selectedFridgePC=null; selectedFridgeSP=null;
+  renderStoreLists();
+
+  // PC
+  document.getElementById('pc-placeholder').style.display='none';
+  document.getElementById('pc-store-detail').style.display='block';
+  document.getElementById('pc-detail-title').textContent=selectedStore.name+' — 機器一覧';
+  document.getElementById('pc-log-store-title').textContent=selectedStore.name+' — 記録一覧';
+  renderFridgeGrid('pc');
+  buildFridgeSel('pc');
+
+  // SP → 詳細画面へ
+  document.getElementById('sp-detail-title').textContent=selectedStore.name;
+  document.getElementById('sp-log-store-title').textContent=selectedStore.name+' — 記録一覧';
+  renderFridgeGrid('sp');
+  buildFridgeSel('sp');
+  spNav('detail');
+
+  // ログ取得
+  showLoading(true);
+  try{
+    const data=await fetchGASJsonp('getLogs',{store_id:selectedStore.code,days:'30'});
+    const logs=data.logs||[];
+    currentLogsPC=[...logs]; filteredLogsPC=[...logs];
+    currentLogsSP=[...logs]; filteredLogsSP=[...logs];
+    renderLogTable('pc',filteredLogsPC);
+    renderLogTable('sp',filteredLogsSP);
+  }catch(e){
+    ['pc','sp'].forEach(p=>document.getElementById(p+'-log-tbody').innerHTML='<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--alert)">取得失敗</td></tr>');
+  }finally{ showLoading(false) }
+
+  ['pc','sp'].forEach(p=>{
+    document.getElementById(p+'-chart-title').textContent='機器を選択してください';
+    document.getElementById(p+'-threshold-legend').innerHTML='';
+  });
+  if(chartPC){chartPC.destroy();chartPC=null}
+  if(chartSP){chartSP.destroy();chartSP=null}
+}
+
+// ============================================================
+// スマホナビ
+// ============================================================
+function spNav(screen){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('active'));
+  const screenMap={home:'sp-home',stores:'sp-stores',alert:'sp-alert',rate:'sp-rate',detail:'sp-detail'};
+  const navMap={home:'bnav-home',stores:'bnav-stores',alert:'bnav-alert',rate:'bnav-rate'};
+  document.getElementById(screenMap[screen]).classList.add('active');
+  if(navMap[screen]) document.getElementById(navMap[screen]).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+// ============================================================
+// タブ切替
+// ============================================================
+function pcSwitchTab(tab){
+  document.getElementById('pc-panel-chart').style.display=tab==='chart'?'block':'none';
+  document.getElementById('pc-panel-log').style.display=tab==='log'?'block':'none';
+  document.getElementById('pc-tab-chart').classList.toggle('active',tab==='chart');
+  document.getElementById('pc-tab-log').classList.toggle('active',tab==='log');
+}
+function spSwitchTab(tab){
+  document.getElementById('sp-panel-chart').style.display=tab==='chart'?'block':'none';
+  document.getElementById('sp-panel-log').style.display=tab==='log'?'block':'none';
+  document.getElementById('sp-tab-chart').classList.toggle('active',tab==='chart');
+  document.getElementById('sp-tab-log').classList.toggle('active',tab==='log');
+}
+
+// ============================================================
+// 冷蔵庫グリッド
+// ============================================================
+function renderFridgeGrid(mode){
+  const grid=document.getElementById(mode+'-fridge-grid');
+  grid.innerHTML='';
+  selectedStore.fridges.forEach(f=>{
+    const cls=f.status==='warn'||f.status==='warning'?'warn':f.status==='alert'?'alert':f.status==='ok'?'ok':'';
+    const sf=mode==='pc'?selectedFridgePC:selectedFridgeSP;
+    const cell=document.createElement('div');
+    cell.className='fridge-cell '+cls+(sf&&sf.id===f.id?' selected':'');
+    cell.onclick=()=>selectFridge(f,mode);
+    const tc=f.status==='warn'||f.status==='warning'?'warn':f.status==='alert'?'alert':f.status==='ok'?'ok':'none';
+    cell.innerHTML=`<div class="fc-name">${f.name}</div><div class="fc-temp ${tc}">${f.temp!==null?f.temp+'℃':'未記録'}</div><div class="fc-time">${f.slot?f.slot+' 記録済':'—'}</div>`;
+    grid.appendChild(cell);
+  });
+}
+
+// ============================================================
+// グラフ
+// ============================================================
+async function selectFridge(fridge,mode){
+  if(mode==='pc') selectedFridgePC=fridge; else selectedFridgeSP=fridge;
+  renderFridgeGrid(mode);
+  await drawChartFromGAS(fridge,mode==='pc'?currentPeriodPC:currentPeriodSP,mode);
+}
+
+async function setPeriod(days,btn,mode){
+  if(mode==='pc') currentPeriodPC=days; else currentPeriodSP=days;
+  document.querySelectorAll('#'+(mode==='pc'?'pc':'sp')+'-panel-chart .period-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const f=mode==='pc'?selectedFridgePC:selectedFridgeSP;
+  if(f) await drawChartFromGAS(f,days,mode);
+}
+
+async function drawChartFromGAS(fridge,days,mode){
+  const chartId=mode+'-temp-chart';
+  const titleId=mode+'-chart-title';
+  const legendId=mode+'-threshold-legend';
+  if(mode==='pc'&&chartPC){chartPC.destroy();chartPC=null}
+  if(mode==='sp'&&chartSP){chartSP.destroy();chartSP=null}
+  document.getElementById(titleId).textContent=fridge.name+' — データ取得中...';
+  let logs=[];
+  try{
+    const res=await fetchGASJsonp('getLogs',{store_id:selectedStore.code,fridge_id:fridge.id,days:String(days)});
+    logs=res.logs||[];
+  }catch(e){ document.getElementById(titleId).textContent='データ取得失敗'; return }
+  if(!logs.length){ document.getElementById(titleId).textContent=fridge.name+' — 記録なし（'+days+'日間）'; return }
+  const reversed=[...logs].reverse();
+  const labels=reversed.map(l=>l.timestamp.slice(5,10));
+  const data=reversed.map(l=>l.temp);
+  const {min_normal:nMin,max_normal:nMax,max_warn:wMax}=fridge;
+  const ptColors=data.map(v=>fridge.type==='冷凍'?(v<nMin||v>wMax)?'#b91c1c':v>nMax?'#b45309':'#15803d':(v>wMax||v<nMin)?'#b91c1c':v>nMax?'#b45309':'#15803d');
+  document.getElementById(titleId).textContent=selectedStore.name+' '+fridge.name+' — '+days+'日間（'+logs.length+'件）';
+  const chart=new Chart(document.getElementById(chartId),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:fridge.name,data,borderColor:ptColors[ptColors.length-1],pointBackgroundColor:ptColors,pointRadius:4,tension:0.3,fill:false,borderWidth:2},
+      {label:'正常上限',data:Array(data.length).fill(nMax),borderColor:'#94a3b8',borderDash:[4,4],borderWidth:1,pointRadius:0,fill:false},
+      {label:'正常下限',data:Array(data.length).fill(nMin),borderColor:'#cbd5e1',borderDash:[4,4],borderWidth:1,pointRadius:0,fill:false},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{ticks:{font:{size:11},callback:v=>v+'℃'},grid:{color:'rgba(0,0,0,.05)'}},x:{ticks:{font:{size:10},maxRotation:45,maxTicksLimit:10},grid:{display:false}}}}
+  });
+  if(mode==='pc') chartPC=chart; else chartSP=chart;
+  document.getElementById(legendId).innerHTML=`<div class="tl-item"><div class="tl-dash" style="border-color:#94a3b8"></div><span>正常: ${nMin}〜${nMax}℃</span></div><div class="tl-item"><div class="tl-dash" style="border-color:#fde68a"></div><span>警告: ${nMax}〜${wMax}℃</span></div><div class="tl-item"><span style="color:#b91c1c">●</span> 異常　<span style="color:#b45309">●</span> 警告</div>`;
+}
+
+// ============================================================
+// ログ一覧
+// ============================================================
+function buildFridgeSel(mode){
+  const sel=document.getElementById(mode+'-log-fridge-sel');
+  sel.innerHTML='<option value="">全機器</option>';
+  selectedStore.fridges.forEach(f=>{const o=document.createElement('option');o.value=f.id;o.text=f.name;sel.appendChild(o)});
+}
+
+function searchLogs(mode){
+  const from=document.getElementById(mode+'-log-from').value;
+  const to=document.getElementById(mode+'-log-to').value;
+  const fridgeId=document.getElementById(mode+'-log-fridge-sel').value;
+  const status=document.getElementById(mode+'-log-status-sel').value;
+  const src=mode==='pc'?currentLogsPC:currentLogsSP;
+  const filtered=src.filter(l=>{
+    const d=l.timestamp.slice(0,10).replace(/\//g,'-');
+    if(from&&d<from) return false;
+    if(to&&d>to) return false;
+    if(fridgeId&&l.fridge_id!==fridgeId) return false;
+    if(status==='normal'&&l.status!=='normal') return false;
+    if(status==='warning'&&l.status==='normal') return false;
+    if(status==='alert'&&l.status!=='alert') return false;
+    return true;
+  });
+  if(mode==='pc') filteredLogsPC=filtered; else filteredLogsSP=filtered;
+  renderLogTable(mode,filtered);
+}
+
+function renderLogTable(mode,logs){
+  const tbody=document.getElementById(mode+'-log-tbody');
+  tbody.innerHTML='';
+  document.getElementById(mode+'-log-count').innerHTML=`<span><b>${logs.length}</b> 件</span>`;
+  if(!logs.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--hint)">該当なし</td></tr>';return}
+  logs.forEach(l=>{
+    const tr=document.createElement('tr');
+    tr.className=l.status==='alert'?'row-alert':l.status==='warning'?'row-warn':'';
+    const chip=l.status==='alert'?'<span class="status-chip chip-alert">🚨 異常</span>':l.status==='warning'?'<span class="status-chip chip-warn">⚠️ 警告</span>':'<span class="status-chip chip-ok">✅ 正常</span>';
+    if(mode==='sp'){
+      tr.innerHTML=`<td>${l.timestamp.slice(5,16)}</td><td>${l.fridge_name}</td><td>${l.slot}</td><td style="font-weight:700">${l.temp}℃</td><td>${chip}</td><td>${l.staff}</td>`;
+    } else {
+      tr.innerHTML=`<td>${l.timestamp}</td><td>${l.fridge_name}</td><td>${l.slot}</td><td style="font-weight:700">${l.temp}℃</td><td>${chip}</td><td>${l.staff}</td><td style="color:var(--sub)">${l.memo||''}</td>`;
+    }
+    tbody.appendChild(tr);
+  });
+}
+
+function downloadCSV(mode){
+  if(!selectedStore) return;
+  const logs=mode==='pc'?filteredLogsPC:filteredLogsSP;
+  if(!logs.length){alert('ダウンロードするデータがありません');return}
+  const from=document.getElementById(mode+'-log-from').value||'';
+  const to=document.getElementById(mode+'-log-to').value||'';
+  const hdr=['記録日時','店舗名','機器名','時間帯','温度(℃)','ステータス','担当者','備考'];
+  const rows=logs.map(l=>[l.timestamp,selectedStore.name,l.fridge_name,l.slot,l.temp,l.status==='alert'?'異常':l.status==='warning'?'警告':'正常',l.staff,l.memo||'']);
+  const csv=[hdr,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`温度記録_${selectedStore.code}_${selectedStore.name}_${from}_${to}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// 下段
+// ============================================================
+function renderAlertLog(){
+  const logs=(summaryData&&summaryData.alertLogs)||[];
+  ['alert-log-list-pc','alert-log-list-sp','alert-log-list-sp2'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    if(!logs.length){el.innerHTML='<div style="text-align:center;padding:16px;color:var(--hint);font-size:13px">異常・警告なし</div>';return}
+    el.innerHTML='';
+    logs.slice(0,6).forEach(l=>{
+      const cls=l.status==='alert'?'alert':'warn';
+      const item=document.createElement('div');
+      item.className='log-item';
+      item.innerHTML=`<span class="badge badge-${cls}" style="flex-shrink:0">${l.status==='alert'?'異常':'警告'}</span><div class="log-info"><div class="log-store">${l.store_name} ${l.fridge_name}</div></div><span style="font-weight:700;color:var(--${cls});flex-shrink:0">${l.temp}℃</span><span style="font-size:11px;color:var(--hint);flex-shrink:0;margin-left:4px">${l.timestamp}</span>`;
+      el.appendChild(item);
+    });
+  });
+}
+
+function renderSubmissionRate(){
+  ['submission-rate-pc','submission-rate-sp','submission-rate-sp2'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    if(!summaryData||!summaryData.submissionRate){el.innerHTML='<div style="color:var(--hint);font-size:13px">データなし</div>';return}
+    const rate=summaryData.submissionRate;
+    el.innerHTML=['午前','午後'].map(slot=>{
+      const d=rate[slot]||{submitted:0,total:35};
+      const pct=d.total>0?Math.round(d.submitted/d.total*100):0;
+      return`<div class="pbar-wrap"><div class="pbar-row"><span>${slot}</span><span style="font-weight:500">${d.submitted}/${d.total}店（${pct}%）</span></div><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+  });
+}
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+function showLoading(show){
+  document.getElementById('loading-overlay').style.display=show?'flex':'none';
+}
+function fmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function updateClock(){
+  const n=new Date();
+  document.getElementById('clock').textContent=n.getFullYear()+'/'+String(n.getMonth()+1).padStart(2,'0')+'/'+String(n.getDate()).padStart(2,'0')+' '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+</script>
+</body>
+</html>
