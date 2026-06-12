@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>温度記録</title>
+<!-- WOFF SDK -->
+<script src="https://static.worksmobile.net/static/woff/woff-sdk.min.js"></script>
+<style>
+:root{
+  --brand:#8B0000;--brand-light:#fdf0f0;
+  --ok:#15803d;--ok-bg:#dcfce7;
+  --warn:#b45309;--warn-bg:#fef9c3;
+  --alert:#b91c1c;--alert-bg:#fee2e2;
+  --text:#18181b;--sub:#71717a;--hint:#a1a1aa;
+  --bg:#fafafa;--surface:#fff;--border:#e4e4e7;
+  --r:10px;--r-sm:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Hiragino Sans','Meiryo UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+header{background:var(--brand);color:#fff;padding:14px 20px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+main{padding:18px 16px 40px;max-width:440px;margin:0 auto}
+
+/* ステップ */
+.steps{display:flex;align-items:center;margin-bottom:22px}
+.sdot{width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;border:2px solid var(--border);background:var(--surface);color:var(--sub);transition:all .2s}
+.sdot.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.sdot.done{background:var(--ok);border-color:var(--ok);color:#fff}
+.sline{flex:1;height:2px;background:var(--border);transition:background .2s}
+.sline.done{background:var(--ok)}
+.step{display:none}.step.active{display:block}
+.slabel{font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.stitle{font-size:19px;font-weight:700;margin-bottom:18px;line-height:1.3}
+
+/* コード入力 */
+.code-input{width:100%;font-size:38px;font-weight:700;text-align:center;letter-spacing:.12em;border:2px solid var(--border);border-radius:var(--r);padding:18px 12px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .15s;-moz-appearance:textfield}
+.code-input::-webkit-outer-spin-button,.code-input::-webkit-inner-spin-button{-webkit-appearance:none}
+.code-input:focus{border-color:var(--brand)}
+.store-badge{margin-top:10px;padding:13px;border-radius:var(--r-sm);font-size:14px;font-weight:700;text-align:center;min-height:48px;display:flex;align-items:center;justify-content:center;gap:6px}
+.sb-empty{background:var(--bg);color:var(--sub);border:1.5px dashed var(--border);font-weight:400;font-size:13px}
+.sb-found{background:var(--ok-bg);color:var(--ok)}
+.sb-notfound{background:var(--alert-bg);color:var(--alert)}
+.sb-loading{background:var(--bg);color:var(--sub);font-size:13px;font-weight:400}
+
+/* 時間帯 */
+.slot-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.slot-btn{border:1.5px solid var(--border);border-radius:var(--r);padding:18px 8px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:center;background:var(--surface);transition:all .15s;color:var(--text)}
+.slot-btn .icon{font-size:24px;display:block;margin-bottom:4px}
+.slot-btn.sel{background:var(--brand);border-color:var(--brand);color:#fff}
+
+/* 進捗 */
+.prog-bar{height:5px;background:var(--border);border-radius:3px;margin-bottom:8px;overflow:hidden}
+.prog-fill{height:100%;background:var(--brand);border-radius:3px;transition:width .3s}
+.prog-row{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-bottom:10px}
+
+/* 上書きバナー */
+.override-banner{background:var(--warn-bg);border:1px solid #fde68a;border-radius:var(--r-sm);padding:9px 12px;font-size:12px;color:var(--warn);font-weight:700;margin-bottom:10px;display:none}
+
+/* テーブル */
+.ftable{width:100%;border-collapse:collapse;font-size:13px}
+.ftable th{font-size:11px;font-weight:700;color:var(--sub);padding:0 6px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+.ftable td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:middle}
+.frow:last-child td{border-bottom:none}
+.frow.recorded{background:#f9f9f7}
+.fname{font-weight:700;font-size:13px}
+.ftype{font-size:11px;color:var(--hint)}
+.recorded-chip{display:inline-flex;align-items:center;gap:3px;font-size:12px;background:var(--ok-bg);color:var(--ok);padding:3px 8px;border-radius:20px;font-weight:700}
+.recorded-who{font-size:11px;color:var(--hint);margin-top:2px}
+.override-btn{font-size:11px;color:var(--brand);background:none;border:1px solid var(--brand);border-radius:var(--r-sm);padding:3px 8px;cursor:pointer;white-space:nowrap}
+.temp-inp{width:72px;padding:6px 6px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:15px;font-weight:700;text-align:center;background:var(--surface);color:var(--text);-moz-appearance:textfield;outline:none;transition:border-color .15s}
+.temp-inp::-webkit-outer-spin-button,.temp-inp::-webkit-inner-spin-button{-webkit-appearance:none}
+.temp-inp:focus{border-color:var(--brand)}
+.temp-inp.ok{border-color:var(--ok);background:var(--ok-bg)}
+.temp-inp.warn{border-color:var(--warn);background:var(--warn-bg)}
+.temp-inp.alrt{border-color:var(--alert);background:var(--alert-bg)}
+.temp-inp:disabled{opacity:.4}
+.st-col{text-align:center;width:28px;font-size:15px}
+.skip-chk{width:16px;height:16px;accent-color:var(--brand);cursor:pointer}
+
+/* スタッフ */
+.staff-input{width:100%;font-size:17px;font-weight:500;padding:14px;border:2px solid var(--border);border-radius:var(--r);font-family:inherit;color:var(--text);background:var(--surface);outline:none;margin-top:4px;transition:border-color .15s}
+.staff-input:focus{border-color:var(--brand)}
+
+/* ボタン */
+.btn-next{width:100%;padding:15px;background:var(--brand);color:#fff;border:none;border-radius:var(--r);font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;margin-top:10px;transition:opacity .15s,transform .1s}
+.btn-next:active{transform:scale(.98)}
+.btn-next:disabled{opacity:.35;cursor:not-allowed}
+.btn-back{width:100%;padding:12px;background:none;color:var(--sub);border:1.5px solid var(--border);border-radius:var(--r);font-family:inherit;font-size:15px;cursor:pointer;margin-top:7px}
+
+/* 確認 */
+.conf-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
+.conf-row{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);gap:8px;font-size:13px}
+.conf-row:last-child{border-bottom:none}
+.conf-label{color:var(--sub);width:76px;flex-shrink:0;font-size:12px}
+.conf-val{font-size:14px;font-weight:600;flex:1}
+.override-tag{font-size:10px;background:var(--warn-bg);color:var(--warn);padding:1px 6px;border-radius:20px;margin-left:4px;font-weight:700}
+.alert-box{border-radius:var(--r-sm);padding:12px 14px;font-size:13px;font-weight:700;margin-bottom:12px}
+.alert-box.danger{background:var(--alert-bg);color:var(--alert)}
+.alert-box.warning{background:var(--warn-bg);color:var(--warn)}
+
+/* 完了 */
+.done-wrap{text-align:center;padding:28px 0 8px}
+.done-list{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px;text-align:left}
+.done-row{display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);font-size:13px}
+.done-row:last-child{border-bottom:none}
+
+/* エラー */
+.error-msg{background:var(--alert-bg);color:var(--alert);border-radius:var(--r-sm);padding:11px 13px;font-size:13px;margin-top:8px;display:none}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-3px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyFzMNLQZ-yGWdkquLIYiuatHaexY-B9U5Dhv3n56M7Q0dZJ9wLsykhAojgqgByhMW27A/exec';
+const WOFF_ID = 'HE5ij8y3CA_-sptKL-E0uA';
+
+let masterCache = null;
+let woffUser = '';
+
+async function initWoff(){
+  try{
+    await WORKS.init({clientId: WOFF_ID});
+    const profile = await WORKS.getProfile();
+    woffUser = profile.displayName || '';
+    if(woffUser) document.getElementById('staff').value = woffUser;
+  } catch(e){ console.log('WOFF init skipped:', e.message) }
+}
+
+function fetchGASJsonp(action, params={}){
+  return new Promise((resolve, reject)=>{
+    const cb='cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const qs=new URLSearchParams({action, callback:cb, ...params}).toString();
+    const s=document.createElement('script');
+    const t=setTimeout(()=>{ delete window[cb]; s.remove(); reject(new Error('Timeout')) }, 15000);
+    window[cb]=(data)=>{ clearTimeout(t); delete window[cb]; s.remove(); resolve(data) };
+    s.src=GAS_URL+'?'+qs;
+    s.onerror=()=>{ clearTimeout(t); delete window[cb]; reject(new Error('Load error')) };
+    document.head.appendChild(s);
+  });
+}
+
+async function loadMaster(){
+  if(masterCache) return masterCache;
+  try{
+    masterCache = await fetchGASJsonp('getMaster');
+    document.getElementById('master-error').style.display = 'none';
+    return masterCache;
+  } catch(e){
+    document.getElementById('master-error').style.display = 'block';
+    return null;
+  }
+}
+
+loadMaster();
+initWoff();
+</script>
+
+<header>🌡 温度記録</header>
+<main>
+
+<div class="steps">
+  <div class="sdot active" id="d1">1</div><div class="sline" id="l1"></div>
+  <div class="sdot" id="d2">2</div><div class="sline" id="l2"></div>
+  <div class="sdot" id="d3">3</div><div class="sline" id="l3"></div>
+  <div class="sdot" id="d4">4</div>
+</div>
+
+<!-- STEP1: 店舗コード -->
+<div class="step active" id="step1">
+  <div class="slabel">ステップ 1 / 4</div>
+  <div class="stitle">店舗コードを入力してください</div>
+  <input class="code-input" type="text" inputmode="numeric" maxlength="4"
+    placeholder="例: 301" id="code" oninput="onCode()" autocomplete="off" spellcheck="false">
+  <div class="store-badge sb-empty" id="sbadge">コードを入力してください</div>
+  <div class="error-msg" id="master-error">マスタ読み込みに失敗しました。通信状況を確認してください。</div>
+  <button class="btn-next" id="btn1" disabled onclick="go(2)" style="margin-top:14px">次へ →</button>
+</div>
+
+<!-- STEP2: 時間帯 -->
+<div class="step" id="step2">
+  <div class="slabel">ステップ 2 / 4</div>
+  <div class="stitle">時間帯を選んでください</div>
+  <div class="slot-grid">
+    <button class="slot-btn" onclick="setSlot(this,'午前')"><span class="icon">☀️</span>午前</button>
+    <button class="slot-btn" onclick="setSlot(this,'午後')"><span class="icon">🌙</span>午後</button>
+  </div>
+  <button class="btn-next" id="btn2" disabled onclick="go(3)">次へ →</button>
+  <button class="btn-back" onclick="go(1)">← 戻る</button>
+</div>
+
+<!-- STEP3: 一括入力 -->
+<div class="step" id="step3">
+  <div class="slabel">ステップ 3 / 4</div>
+  <div class="stitle" id="s3title">温度を一括入力</div>
+  <div class="prog-bar"><div class="prog-fill" id="prog" style="width:0%"></div></div>
+  <div class="prog-row">
+    <span id="cnt">0 / 0 台 入力済み</span>
+    <span id="acnt" style="color:var(--alert)"></span>
+  </div>
+  <div class="override-banner" id="obanner">
+    ✏️ 上書き入力 <span id="ocnt">0</span>台 — 元の記録を保持して新しいレコードを保存します
+  </div>
+  <div style="overflow-x:auto">
+    <table class="ftable">
+      <thead><tr>
+        <th>機器名</th>
+        <th style="text-align:center">温度（℃）</th>
+        <th style="text-align:center">判定</th>
+        <th style="text-align:center">操作</th>
+      </tr></thead>
+      <tbody id="ftbody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:14px">
+    <div class="slabel" style="margin-bottom:5px">担当者名</div>
+    <input class="staff-input" type="text" id="staff" placeholder="例：田中" oninput="updateProg()">
+  </div>
+  <button class="btn-next" id="btn3" disabled onclick="go(4)">確認へ →</button>
+  <button class="btn-back" onclick="go(2)">← 戻る</button>
+</div>
+
+<!-- STEP4: 確認 -->
+<div class="step" id="step4">
+  <div class="slabel">ステップ 4 / 4</div>
+  <div class="stitle">内容を確認して送信</div>
+  <div class="conf-card" id="conf-card"></div>
+  <div id="conf-alerts"></div>
+  <button class="btn-next" id="btn-submit" onclick="submit()">送信する</button>
+  <button class="btn-back" onclick="go(3)">← 戻る</button>
+</div>
+
+<!-- DONE -->
+<div class="step" id="step-done">
+  <div class="done-wrap">
+    <div style="font-size:56px;margin-bottom:10px" id="done-icon">✅</div>
+    <div style="font-size:22px;font-weight:700;margin-bottom:6px" id="done-title">記録しました</div>
+    <div style="font-size:13px;color:var(--sub);margin-bottom:18px" id="done-sub"></div>
+    <div id="done-alerts"></div>
+    <div class="done-list" id="done-list"></div>
+    <button class="btn-next" onclick="restart()">続けて記録する</button>
+  </div>
+</div>
+
+</main>
+
+<script>
+let sel = {code:'', store:null, fridgeList:[], slot:'', existing:{}};
+
+// ============================================================
+// STEP1: 店舗コード
+// ============================================================
+async function onCode(){
+  const v = document.getElementById('code').value.trim();
+  const badge = document.getElementById('sbadge');
+  const btn = document.getElementById('btn1');
+  sel.store = null; sel.fridgeList = [];
+  btn.disabled = true;
+
+  if(!v){
+    badge.className='store-badge sb-empty';
+    badge.textContent='コードを入力してください';
+    return;
+  }
+
+  badge.className='store-badge sb-loading';
+  badge.textContent='確認中...';
+
+  const master = await loadMaster();
+  if(!master){ badge.className='store-badge sb-notfound'; badge.textContent='❌ マスタ取得失敗'; return }
+
+  const store = master.stores.find(s => s.store_id === v);
+  if(store){
+    sel.code = v;
+    sel.store = store;
+    sel.fridgeList = master.fridges.filter(f => f.store_id === v);
+    badge.className='store-badge sb-found';
+    badge.textContent='✅ '+store.name+'（'+sel.fridgeList.length+'台）';
+    btn.disabled = false;
+  } else {
+    badge.className='store-badge sb-notfound';
+    badge.textContent='❌ 店舗コードが見つかりません';
+  }
+}
+
+// ============================================================
+// STEP2: 時間帯
+// ============================================================
+function setSlot(el, slot){
+  sel.slot = slot;
+  document.querySelectorAll('.slot-btn').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+  document.getElementById('btn2').disabled = false;
+}
+
+// ============================================================
+// STEP3: テーブル構築（既存ログ取得して表示）
+// ============================================================
+async function buildTable(){
+  sel.existing = {};
+  const tbody = document.getElementById('ftbody');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--sub);font-size:13px">既存の記録を確認中...</td></tr>';
+
+  // 本日の既存ログを取得
+  try{
+    const data = await fetchGASJsonp('getLogs', {store_id: sel.code, days: '1'});
+    const today = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g,'/');
+    (data.logs||[]).forEach(l=>{
+      if(l.slot === sel.slot){
+        const key = l.fridge_id;
+        // 同一機器の最新1件だけ保持
+        if(!sel.existing[key] || l.timestamp > sel.existing[key].timestamp){
+          sel.existing[key] = l;
+        }
+      }
+    });
+  } catch(e){ console.log('既存ログ取得失敗:', e.message) }
+
+  const recorded = Object.keys(sel.existing).length;
+  document.getElementById('s3title').textContent =
+    sel.store.name+' — 一括入力'+(recorded>0?' （'+recorded+'台 記録済み）':'');
+
+  tbody.innerHTML = '';
+  sel.fridgeList.forEach((f,i)=>{
+    const ex = sel.existing[f.fridge_id];
+    const tr = document.createElement('tr');
+    tr.className = 'frow'+(ex?' recorded':'');
+    tr.id = 'row_'+i;
+    if(ex){
+      const icon = ex.status==='alert'?'🚨':ex.status==='warning'?'⚠️':'✅';
+      tr.innerHTML=`
+        <td><div class="fname">${f.name}</div><div class="ftype">${f.type}</div></td>
+        <td style="text-align:center">
+          <span class="recorded-chip">${icon} ${ex.temp}℃</span>
+          <div class="recorded-who">${ex.staff} ${ex.timestamp.slice(11,16)}</div>
+        </td>
+        <td class="st-col" id="st_${i}">—</td>
+        <td style="text-align:center">
+          <button class="override-btn" id="obtn_${i}" onclick="enableOverride(${i},'${f.fridge_id}')">✏️ 上書き</button>
+        </td>`;
+    } else {
+      tr.innerHTML=`
+        <td><div class="fname">${f.name}</div><div class="ftype">${f.type}</div></td>
+        <td style="text-align:center">
+          <input class="temp-inp" type="number" step="0.1" inputmode="decimal"
+            placeholder="—" id="tmp_${i}" oninput="onTemp(${i},'${f.fridge_id}')">
+        </td>
+        <td class="st-col" id="st_${i}">—</td>
+        <td style="text-align:center">
+          <input type="checkbox" class="skip-chk" id="sk_${i}" onchange="onSkip(${i})">
+        </td>`;
+    }
+    tbody.appendChild(tr);
+  });
+
+  // WOFFユーザー名を担当者欄に自動入力
+  if(woffUser && !document.getElementById('staff').value){
+    document.getElementById('staff').value = woffUser;
+  }
+  updateProg();
+}
+
+function enableOverride(i, fid){
+  const tr = document.getElementById('row_'+i);
+  const f = sel.fridgeList[i];
+  tr.className = 'frow';
+  tr.querySelector('td:nth-child(2)').innerHTML=`
+    <input class="temp-inp" type="number" step="0.1" inputmode="decimal"
+      placeholder="上書き" id="tmp_${i}" oninput="onTemp(${i},'${fid}')">`;
+  tr.querySelector('td:nth-child(4)').innerHTML=`
+    <span style="font-size:11px;color:var(--warn);font-weight:700">上書き中</span>`;
+  document.getElementById('tmp_'+i).focus();
+  updateProg();
+}
+
+function onTemp(i, fid){
+  const f = sel.fridgeList[i];
+  const inp = document.getElementById('tmp_'+i);
+  const t = parseFloat(inp.value);
+  const st = document.getElementById('st_'+i);
+  inp.className = 'temp-inp';
+  if(isNaN(t)){ st.textContent='—'; updateProg(); return }
+  const r = judge(f, t);
+  inp.className = 'temp-inp '+(r==='ok'?'ok':r==='warn'?'warn':'alrt');
+  st.textContent = r==='ok'?'✅':r==='warn'?'⚠️':'🚨';
+  updateProg();
+}
+
+function onSkip(i){
+  const inp = document.getElementById('tmp_'+i);
+  const st = document.getElementById('st_'+i);
+  const sk = document.getElementById('sk_'+i).checked;
+  inp.disabled = sk;
+  if(sk){ inp.value=''; inp.className='temp-inp'; st.textContent='—' }
+  updateProg();
+}
+
+function judge(f, t){
+  const isFreezer = f.type === '冷凍';
+  if(isFreezer){
+    if(t>=f.min_normal && t<=f.max_normal) return 'ok';
+    if(t>f.max_normal && t<=f.max_warn)    return 'warn';
+    return 'alert';
+  }
+  if(t>=f.min_normal && t<=f.max_normal) return 'ok';
+  if(t>f.max_normal  && t<=f.max_warn)   return 'warn';
+  return 'alert';
+}
+
+function updateProg(){
+  const n = sel.fridgeList.length;
+  let filled=0, alerts=0, overrides=0;
+  sel.fridgeList.forEach((f,i)=>{
+    const ex = sel.existing[f.fridge_id];
+    const inp = document.getElementById('tmp_'+i);
+    const sk = document.getElementById('sk_'+i);
+    if(sk && sk.checked){ filled++; return }
+    if(inp){
+      const t = parseFloat(inp.value);
+      if(!isNaN(t)){
+        filled++;
+        if(ex) overrides++;
+        if(judge(f,t)==='alert') alerts++;
+      }
+    } else if(ex && !inp){ filled++ }
+  });
+  // 新規入力数（既存のみの行は除く）
+  let newInputs=0;
+  sel.fridgeList.forEach((f,i)=>{
+    const sk=document.getElementById('sk_'+i);
+    const inp=document.getElementById('tmp_'+i);
+    if(sk&&sk.checked){ newInputs++; return }
+    if(inp&&!isNaN(parseFloat(inp.value))) newInputs++;
+  });
+
+  document.getElementById('prog').style.width = Math.round(filled/n*100)+'%';
+  document.getElementById('cnt').textContent = filled+' / '+n+' 台 記録済み（今回入力: '+newInputs+'台）';
+  document.getElementById('acnt').textContent = alerts>0?'🚨 異常 '+alerts+'台':'';
+  const banner = document.getElementById('obanner');
+  if(overrides>0){ banner.style.display='block'; document.getElementById('ocnt').textContent=overrides }
+  else banner.style.display='none';
+  const staff = document.getElementById('staff').value.trim();
+  // 1台以上入力 + 担当者名があれば送信可能
+  document.getElementById('btn3').disabled = !(newInputs>0 && staff);
+}
+
+// ============================================================
+// STEP4: 確認画面
+// ============================================================
+function buildConfirm(){
+  const staff = document.getElementById('staff').value.trim();
+  let html=`
+    <div class="conf-row" style="background:#fafafa">
+      <span class="conf-label">店舗</span>
+      <span class="conf-val">${sel.store.name}</span>
+    </div>
+    <div class="conf-row" style="background:#fafafa">
+      <span class="conf-label">時間帯・担当</span>
+      <span class="conf-val">${sel.slot} / ${staff}</span>
+    </div>`;
+  let alerts=0, overrides=0;
+  sel.fridgeList.forEach((f,i)=>{
+    const ex = sel.existing[f.fridge_id];
+    const inp = document.getElementById('tmp_'+i);
+    const sk = document.getElementById('sk_'+i);
+    let val='—', tag='';
+    if(sk&&sk.checked){ val='スキップ' }
+    else if(inp){
+      const t=parseFloat(inp.value);
+      if(!isNaN(t)){
+        const r=judge(f,t);
+        const icon=r==='ok'?'✅':r==='warn'?'⚠️':'🚨';
+        if(r==='alert') alerts++;
+        if(ex){ overrides++; tag='<span class="override-tag">上書き</span>' }
+        val=t+'℃ '+icon+tag;
+      }
+    } else if(ex){ val=ex.temp+'℃ '+(ex.status==='alert'?'🚨':ex.status==='warning'?'⚠️':'✅') }
+    html+=`<div class="conf-row"><span class="conf-label">${f.name}</span><span class="conf-val">${val}</span></div>`;
+  });
+  document.getElementById('conf-card').innerHTML=html;
+  let msgs='';
+  if(alerts>0)   msgs+=`<div class="alert-box danger">🚨 異常温度 ${alerts}台 — 送信後にLINE WORKSへ通知が届きます</div>`;
+  if(overrides>0) msgs+=`<div class="alert-box warning">✏️ 上書き ${overrides}台 — 元の記録は保持されます</div>`;
+  document.getElementById('conf-alerts').innerHTML=msgs;
+}
+
+// ============================================================
+// 送信（新規・上書き混在を個別にPOST）
+// ============================================================
+async function submit(){
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>送信中...';
+
+  const staff = document.getElementById('staff').value.trim();
+  const now = new Date();
+  const timeStr = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+
+  // 送信対象を収集（新規 + 上書き。既存ありかつinputなしはスキップ）
+  const targets = [];
+  sel.fridgeList.forEach((f,i)=>{
+    const ex = sel.existing[f.fridge_id];
+    const inp = document.getElementById('tmp_'+i);
+    const sk = document.getElementById('sk_'+i);
+    if(sk && sk.checked) return;
+    if(inp){
+      const t = parseFloat(inp.value);
+      if(!isNaN(t)){
+        targets.push({ fridge: f, temp: t, isOverride: !!ex });
+      }
+    }
+    // 既存のみ（上書きなし）はGASへの送信不要
+  });
+
+  let successCount=0, alertCount=0, overrideCount=0, errorCount=0;
+
+  for(const tg of targets){
+    try{
+      const payload = {
+        action: 'saveLog',
+        store_id: sel.code,
+        fridge_id: tg.fridge.fridge_id,
+        temp: tg.temp,
+        slot: sel.slot,
+        staff: staff,
+        memo: tg.isOverride ? '上書き記録' : '',
+      };
+      const res = await fetch(GAS_URL, { method:'POST', body:JSON.stringify(payload) });
+      const json = await res.json();
+      if(json.success){
+        successCount++;
+        if(json.status==='alert') alertCount++;
+        if(tg.isOverride) overrideCount++;
+      } else errorCount++;
+    } catch(e){ errorCount++ }
+  }
+
+  // 完了画面
+  document.getElementById('done-sub').textContent =
+    timeStr+' に '+sel.store.name+' '+sel.slot+' の記録を保存しました（'+successCount+'台）';
+
+  let dAlerts='';
+  if(alertCount>0)   dAlerts+=`<div class="alert-box danger">🚨 異常 ${alertCount}台 — LINE WORKSに通知を送信しました</div>`;
+  if(overrideCount>0) dAlerts+=`<div class="alert-box warning">✏️ 上書き ${overrideCount}台 — 元の記録は保持されています</div>`;
+  if(errorCount>0)    dAlerts+=`<div class="alert-box danger">⚠️ ${errorCount}台の送信に失敗しました</div>`;
+  document.getElementById('done-alerts').innerHTML=dAlerts;
+
+  let rows='';
+  sel.fridgeList.forEach((f,i)=>{
+    const ex=sel.existing[f.fridge_id];
+    const inp=document.getElementById('tmp_'+i);
+    const sk=document.getElementById('sk_'+i);
+    if(sk&&sk.checked) return;
+    let v='—';
+    if(inp&&!isNaN(parseFloat(inp.value))){
+      const r=judge(f,parseFloat(inp.value));
+      v=parseFloat(inp.value)+'℃ '+(r==='ok'?'✅':r==='warn'?'⚠️':'🚨')+(ex?' ✏️':'');
+    } else if(ex){ v=ex.temp+'℃ '+(ex.status==='alert'?'🚨':ex.status==='warning'?'⚠️':'✅') }
+    rows+=`<div class="done-row"><span>${f.name}</span><span>${v}</span></div>`;
+  });
+  document.getElementById('done-list').innerHTML=rows;
+  go('done');
+}
+
+function restart(){
+  sel={code:'',store:null,fridgeList:[],slot:'',existing:{}};
+  document.getElementById('code').value='';
+  document.getElementById('sbadge').className='store-badge sb-empty';
+  document.getElementById('sbadge').textContent='コードを入力してください';
+  document.getElementById('btn1').disabled=true;
+  document.getElementById('btn2').disabled=true;
+  document.getElementById('staff').value=woffUser||'';
+  document.querySelectorAll('.slot-btn').forEach(b=>b.classList.remove('sel'));
+  document.getElementById('btn-submit').disabled=false;
+  document.getElementById('btn-submit').textContent='送信する';
+  go(1);
+}
+
+// ============================================================
+// ステップ遷移
+// ============================================================
+function go(n){
+  document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
+  document.getElementById(n==='done'?'step-done':'step'+n).classList.add('active');
+  for(let i=1;i<=4;i++){
+    const d=document.getElementById('d'+i);
+    const l=document.getElementById('l'+i);
+    d.classList.remove('active','done');
+    if(l) l.classList.remove('done');
+    if(i<n){ d.classList.add('done'); d.textContent='✓' }
+    else if(i===n){ d.classList.add('active'); d.textContent=i }
+    else d.textContent=i;
+    if(l&&i<n) l.classList.add('done');
+  }
+  if(n===3) buildTable();
+  if(n===4) buildConfirm();
+}
+</script>
+</body>
+</html>
